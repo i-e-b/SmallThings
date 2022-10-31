@@ -15,9 +15,9 @@
 /// </summary>
 public class HashPredictCompressor
 {
-    private const int Order = 3;
-    private const ulong Mixer = 0xff51afd7ed558ccdUL; // Hash mixer value 
     private const int NumBits = 12; // how many entries in hash table (2^numBits)
+    private const int Order = 3; // how many *bytes* of context to use between rounds [1..3]
+    private const ulong Mixer = 0xff51afd7ed558ccdUL; // Hash mixer value (see https://en.wikipedia.org/wiki/Hash_function#Multiplicative_hashing )
     
     public static byte[] Compress(byte[] from)
     {
@@ -31,31 +31,31 @@ public class HashPredictCompressor
         to.Add(0);                    // place a byte to hold the ctrl flags
         foreach (var next in from)    // For each byte, processed in order
         {
-            var hash = ctx * Mixer;   // Mix the hash key with context
-            hash >>= 64 - NumBits;
-            var pred = lut[hash];     // Look up the predicted value
+            var hash = ctx * Mixer;       // Mix the context to derive a hash key
+            hash >>= 64 - NumBits;        // Limit hash key length to fit in `lut`
+            var pred = lut[hash];         // Look up the predicted value
 
-            if (pred == next)         // If we predicted the value correctly
+            if (pred == next)             // If we predicted the value correctly
             {
-                ctrl += bit;          // Then set the control bit, but don't write the data value
+                ctrl += bit;              // Then set the control bit, but don't write the data value
             }
-            else                      // If the prediction was wrong
+            else                          // If the prediction was wrong
             {
-                lut[hash] = next;     // Then update our hash table for next prediction
-                to.Add(next);         // And append the data value, without setting the control bit
+                lut[hash] = next;         // Then update our hash table for next prediction
+                to.Add(next);             // And append the data value, without setting the control bit
             }
-            bit >>= 1;                // move to next control bit
-            if (bit == 0)             // If we've run out of space in the control byte
+            bit >>= 1;                    // move to next control bit
+            if (bit == 0)                 // If we've run out of space in the control byte
             {
-                to[loc] = (byte)ctrl; // write the control byte into the output
-                ctrl = 0;             // clear the control bits
-                bit = 128;            // reset the current bit
-                to.Add(0);            // write a new control byte (we will update later)
-                loc = to.Count - 1;   // record the location of the control byte
+                to[loc] = (byte)ctrl;     // write the control byte into the output
+                ctrl = 0;                 // clear the control bits
+                bit = 128;                // reset the current bit
+                to.Add(0);                // write a new control byte (we will update later)
+                loc = to.Count - 1;       // record the location of the control byte
             }
-            ctx <<= 8;                // make space in context for data
-            ctx += next;              // add data to context
-            ctx &= (1 << Order * 8) - 1; // mask context
+            ctx <<= 8;                    // make space in context for data
+            ctx += next;                  // add data to context
+            ctx &= (1 << Order * 8) - 1;  // mask context
         }
         
         to[loc] = (byte)ctrl;         // write final control byte
@@ -76,8 +76,8 @@ public class HashPredictCompressor
 
             for (var bit = 128; bit > 0; bit >>= 1)    // for each bit in the control byte
             {
-                var hash = ctx * Mixer;                // calculate hash key
-                hash >>= 64 - NumBits;
+                var hash = ctx * Mixer;                // Mix the context to derive a hash key
+                hash >>= 64 - NumBits;                 // Limit hash key length to fit in `lut`
 
                 byte next;
                 if ((ctrl & bit) == 0)                 // if control bit says not predicted
