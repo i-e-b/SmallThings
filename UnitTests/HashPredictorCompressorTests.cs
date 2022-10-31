@@ -27,8 +27,10 @@ public class HashPredictorCompressorTests
         var decompressed = HashPredictCompressor.Decompress(compressed);
         Console.WriteLine($"{source.Length} to {compressed.Length} to {decompressed.Length}");
         
+        var original = Encoding.UTF8.GetString(source); // do this in case unicode normalisation bites.
         var result = Encoding.UTF8.GetString(decompressed);
+        Console.WriteLine(result);
         
-        Assert.That(result, Is.EqualTo(source));
+        Assert.That(result, Is.EqualTo(original));
     }
 }

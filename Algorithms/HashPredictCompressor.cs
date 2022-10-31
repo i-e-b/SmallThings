@@ -15,24 +15,24 @@
 /// </summary>
 public class HashPredictCompressor
 {
-    private const int order = 3;
-    private const ulong mixer = 0xff51afd7ed558ccdUL;
-    private const int numBits = 12; // how many entries in hash table (2^numBits)
+    private const int Order = 3;
+    private const ulong Mixer = 0xff51afd7ed558ccdUL; // Hash mixer value 
+    private const int NumBits = 12; // how many entries in hash table (2^numBits)
     
     public static byte[] Compress(byte[] from)
     {
-        var ctrl = 0; // bit flags for predicted or not
-        var bit = 128; // bit mask for ctrl
-        var loc = 0; // where we are updating the control byte
-        var to = new List<byte>(); // output bytes (needs at least 8 bytes of random access)
-        var ctx = 0UL; // Hash context. This is data mixed together for prediction
-        var lut = new byte[1 << numBits]; // Hash table, will be built from input data
+        var ctrl = 0;                     // bit flags for predicted or not
+        var bit = 128;                    // bit mask for ctrl
+        var loc = 0;                      // where we are updating the control byte
+        var to = new List<byte>();        // output bytes (needs at least 8 bytes of random access)
+        var ctx = 0UL;                    // Hash context. This is data mixed together for prediction
+        var lut = new byte[1 << NumBits]; // Hash table, will be built from input data
 
         to.Add(0);                    // place a byte to hold the ctrl flags
         foreach (var next in from)    // For each byte, processed in order
         {
-            var hash = ctx * mixer;   // Mix the hash key with context
-            hash >>= 64 - numBits;
+            var hash = ctx * Mixer;   // Mix the hash key with context
+            hash >>= 64 - NumBits;
             var pred = lut[hash];     // Look up the predicted value
 
             if (pred == next)         // If we predicted the value correctly
@@ -55,15 +55,48 @@ public class HashPredictCompressor
             }
             ctx <<= 8;                // make space in context for data
             ctx += next;              // add data to context
-            ctx &= (1 << order * 8) - 1; // mix
+            ctx &= (1 << Order * 8) - 1; // mask context
         }
         
         to[loc] = (byte)ctrl;         // write final control byte
         return to.ToArray();          // return final output
     }
 
-    public static byte[] Decompress(byte[] compressed)
+    public static byte[] Decompress(byte[] from)
     {
-        throw new NotImplementedException();
+        var at = 0;                       // cursor in 'from' array
+        var ct = from.Length;             // end of input
+        var ctx = 0UL;                    // hash context
+        var lut = new byte[1 << NumBits]; // Hash table, will be built from output data
+        var to = new List<byte>();        // output bytes
+
+        while (at < ct)                                // while cursor not past end
+        {
+            var ctrl = (int)from[at++];                // read a control byte
+
+            for (var bit = 128; bit > 0; bit >>= 1)    // for each bit in the control byte
+            {
+                var hash = ctx * Mixer;                // calculate hash key
+                hash >>= 64 - NumBits;
+
+                byte next;
+                if ((ctrl & bit) == 0)                 // if control bit says not predicted
+                {
+                    if (at >= ct) return to.ToArray(); // if we're at the end of data, return
+                    next = from[at];                   // read literal value from input
+                    at++;                              // move cursor forward
+                    lut[hash] = next;                  // store value in prediction table
+                }
+                else                                   // if control bit says prediction correct
+                {
+                    next = lut[hash];                  // use the predicted value
+                }
+                ctx <<= 8;                             // make space in context for new value
+                ctx += next;                           // add new value to context
+                ctx &= (1 << (Order * 8)) - 1;         // mask context
+                to.Add(next);                          // add value to output
+            }
+        }
+        return to.ToArray();
     }
 }
